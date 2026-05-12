@@ -19,6 +19,7 @@ import com.pingshield.core.StabilityEngine
 import com.pingshield.killer.AppKiller
 import com.pingshield.monitor.NetworkSwitcher
 import com.pingshield.ui.MainActivity
+import com.pingshield.utils.Constants
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
