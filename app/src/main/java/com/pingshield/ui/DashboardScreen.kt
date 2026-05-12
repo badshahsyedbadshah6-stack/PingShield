@@ -1,7 +1,8 @@
 package com.pingshield.ui
 
-import android.content.Context
-import androidx.compose.animation.animateColorAsState
+import android.content.Intent
+import android.net.VpnService
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -31,16 +32,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -48,10 +48,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pingshield.core.NetworkScore
 import com.pingshield.utils.Constants
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 @Composable
 fun DashboardScreen(
@@ -67,7 +65,6 @@ fun DashboardScreen(
     val rssi by viewModel.rssi.collectAsState()
     val linkSpeed by viewModel.linkSpeed.collectAsState()
     val blockedCount by viewModel.blockedCount.collectAsState()
-    val killedApps by viewModel.killedApps.collectAsState()
     val isVpnActive by viewModel.isVpnActive.collectAsState()
     val jitter by viewModel.jitter.collectAsState()
     val stabilityLabel by viewModel.stabilityLabel.collectAsState()
@@ -88,6 +85,16 @@ fun DashboardScreen(
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "pingScale"
     )
+
+    val vpnPermissionLauncher = remember { context as? androidx.activity.ComponentActivity }?.let { activity ->
+        androidx.activity.compose.rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == android.app.Activity.RESULT_OK) {
+                viewModel.startVpnAndLaunchGame(context)
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -145,7 +152,12 @@ fun DashboardScreen(
             )
             Text(
                 stabilityLabel,
-                color = pingColor,
+                color = when (stabilityLabel) {
+                    "Excellent" -> Color(0xFF00E676)
+                    "Good" -> Color(0xFFCDDC39)
+                    "Unstable" -> Color(0xFFFF9800)
+                    else -> Color(0xFFFF1744)
+                },
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -204,7 +216,7 @@ fun DashboardScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // ROW 8 - Channel warning (only when interference)
+        // ROW 8 - Channel warning
         if (channelReport.interferingAPs > 2) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -223,12 +235,23 @@ fun DashboardScreen(
 
         // ROW 9 - Buttons
         Button(
-            onClick = { viewModel.onLaunchPubg(context) },
+            onClick = {
+                if (!isVpnActive) {
+                    val intent = VpnService.prepare(context)
+                    if (intent != null) {
+                        vpnPermissionLauncher?.launch(intent)
+                    } else {
+                        viewModel.startVpnAndLaunchGame(context)
+                    }
+                } else {
+                    viewModel.startVpnAndLaunchGame(context)
+                }
+            },
             modifier = Modifier.fillMaxWidth().height(52.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BFA5)),
             shape = RoundedCornerShape(14.dp)
         ) {
-            Text(if (isVpnActive) "LAUNCH PUBG" else "START VPN", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text("LAUNCH PUBG", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
 
         Spacer(Modifier.height(10.dp))
@@ -282,17 +305,14 @@ fun PingGraph(data: List<Long>, isSpike: Boolean, modifier: Modifier = Modifier)
             val w = size.width; val h = size.height
             val gridColor = Color(0xFF2A2A2A)
             for (i in 0..4) drawLine(gridColor, Offset(0f, h * i / 4), Offset(w, h * i / 4), 1f)
-
             if (data.size < 2) {
                 drawLine(Color(0xFF555555), Offset(0f, h / 2), Offset(w, h / 2), 2f, StrokeCap.Round)
                 return@Canvas
             }
-
             val maxV = maxOf(data.maxOrNull()?.toFloat() ?: 100f, 100f)
             val minV = minOf(data.minOrNull()?.toFloat() ?: 0f, 0f)
             val range = maxOf(maxV - minV, 50f)
             val stepX = w / (Constants.GRAPH_SIZE - 1).coerceAtLeast(1)
-
             val path = Path()
             data.forEachIndexed { i, v ->
                 val x = i * stepX; val y = h - ((v - minV) / range * h)
@@ -317,7 +337,7 @@ fun StatsGrid(dns: String, loss: Double, lossType: String, rssi: Int, linkSpeed:
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatCard("Blocked", "$blockedCount", Modifier.weight(1f))
-            StatCard("Ch", if (channel > 0) "${channel} (${if (interference.length < 15) interference else "${interference.take(12)}..."})" else "N/A", Modifier.weight(1f))
+            StatCard("Ch", if (channel > 0) "${channel}" else "N/A", Modifier.weight(1f))
         }
     }
 }
@@ -334,10 +354,10 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ScoreBreakdown(breakdown: com.pingshield.core.NetworkScore) {
+fun ScoreBreakdown(breakdown: NetworkScore) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         ScoreBar("Ping", breakdown.pingScore, Color(0xFF00E5CC))
-        ScoreBar("Jitter", breakdown.jitterScore, Color(0xFFFFB800), labelSuffix = "(highest weight)")
+        ScoreBar("Jitter", breakdown.jitterScore, Color(0xFFFFB800), "(highest weight)")
         ScoreBar("Loss", breakdown.lossScore, Color(0xFF00E676))
         ScoreBar("Signal", breakdown.rssiScore, Color(0xFF448AFF))
     }

@@ -31,7 +31,6 @@ class PingEngine @Inject constructor(
     val pingHistory: StateFlow<List<Long>> = _pingHistory.asStateFlow()
 
     private val history = mutableListOf<Long>()
-    private val sockets = mutableMapOf<String, Socket?>()
     private var scope: CoroutineScope? = null
 
     fun start() {
@@ -41,20 +40,12 @@ class PingEngine @Inject constructor(
         _isSpike.value = false
 
         scope = CoroutineScope(Dispatchers.IO + Job())
-        Constants.PING_TARGETS.forEach { target ->
-            sockets[target.host] = null
-        }
-
         scope?.launch {
             while (isActive) {
-                val results = mutableListOf<Long>()
                 val deferred = Constants.PING_TARGETS.map { target ->
-                    async {
-                        measureTarget(target.host, target.port)
-                    }
+                    async { measureTarget(target.host, target.port) }
                 }
-                deferred.forEach { results.add(it.await()) }
-
+                val results = deferred.map { it.await() }
                 val validResults = results.filter { it >= 0 }
                 if (validResults.isNotEmpty()) {
                     val minPing = validResults.min()
@@ -69,10 +60,8 @@ class PingEngine @Inject constructor(
                     val minDouble = minPing.toDouble()
                     ewmaEstimator.update(minDouble)
                     jitterAnalyzer.addSample(minDouble)
-
                     _isSpike.value = ewmaEstimator.isSpike(minDouble)
                 }
-
                 kotlinx.coroutines.delay(Constants.PING_INTERVAL_MS)
             }
         }
@@ -80,22 +69,13 @@ class PingEngine @Inject constructor(
 
     private fun measureTarget(host: String, port: Int): Long {
         return try {
-            var socket = sockets[host]
-            if (socket == null || !socket.isConnected) {
-                socket = Socket()
-                socket.connect(InetSocketAddress(host, port), 1000)
-                sockets[host] = socket
-            }
+            val socket = Socket()
             val start = System.nanoTime()
-            socket.soTimeout = 500
-            socket.sendUrgentData(0)
+            socket.connect(InetSocketAddress(host, port), 500)
             val end = System.nanoTime()
+            socket.close()
             (end - start) / 1_000_000
         } catch (e: Exception) {
-            try {
-                sockets[host]?.close()
-            } catch (_: Exception) {}
-            sockets[host] = null
             -1L
         }
     }
@@ -103,10 +83,6 @@ class PingEngine @Inject constructor(
     fun stop() {
         scope?.cancel()
         scope = null
-        sockets.forEach { (_, socket) ->
-            try { socket?.close() } catch (_: Exception) {}
-        }
-        sockets.clear()
         history.clear()
         _pingHistory.value = emptyList()
         _currentPing.value = 0L

@@ -1,8 +1,6 @@
 package com.pingshield.ui
 
 import android.content.Context
-import android.content.Intent
-import android.net.VpnService
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pingshield.core.AdaptiveResponseEngine
@@ -65,21 +63,25 @@ class DashboardViewModel @Inject constructor(
     private val _isVpnActive = MutableStateFlow(false)
     val isVpnActive: StateFlow<Boolean> = _isVpnActive.asStateFlow()
 
-    fun onLaunchPubg(context: Context) {
+    fun startVpn(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
-            val intent = VpnService.prepare(context)
-            if (intent != null) {
-                context.startActivity(intent)
-                return@launch
-            }
-
             appKiller.proactiveKill()
             dnsManager.preResolveDomains()
             dnsManager.activate()
             channelAnalyzer.start()
             PingShieldVpn.startVpn(context)
             _isVpnActive.value = true
+        }
+    }
 
+    fun startVpnAndLaunchGame(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            appKiller.proactiveKill()
+            dnsManager.preResolveDomains()
+            dnsManager.activate()
+            channelAnalyzer.start()
+            PingShieldVpn.startVpn(context)
+            _isVpnActive.value = true
             launchPubg(context)
         }
     }
