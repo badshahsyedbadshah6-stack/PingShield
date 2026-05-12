@@ -10,13 +10,15 @@ import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import com.pingshield.PingShieldApp
 import com.pingshield.R
+import com.pingshield.core.AdaptiveResponseEngine
+import com.pingshield.core.DnsManager
+import com.pingshield.core.JitterAnalyzer
+import com.pingshield.core.PacketLossAnalyzer
 import com.pingshield.core.PingEngine
 import com.pingshield.core.StabilityEngine
-import com.pingshield.core.DnsManager
 import com.pingshield.killer.AppKiller
 import com.pingshield.monitor.NetworkSwitcher
 import com.pingshield.ui.MainActivity
-import com.pingshield.utils.Constants
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +41,9 @@ class PingShieldVpn : VpnService() {
     @Inject lateinit var networkSwitcher: NetworkSwitcher
     @Inject lateinit var packetProcessor: PacketProcessor
     @Inject lateinit var trafficController: TrafficController
+    @Inject lateinit var jitterAnalyzer: JitterAnalyzer
+    @Inject lateinit var adaptiveEngine: AdaptiveResponseEngine
+    @Inject lateinit var packetLossAnalyzer: PacketLossAnalyzer
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var scope: CoroutineScope? = null
@@ -119,7 +124,10 @@ class PingShieldVpn : VpnService() {
 
     private fun buildStatusText(): String {
         val ping = pingEngine.currentPing.value
-        return "Ping: ${ping}ms | VPN Active"
+        val jitter = jitterAnalyzer.ipdv.value
+        val score = adaptiveEngine.networkScore.value
+        val loss = packetLossAnalyzer.lossPercent.value
+        return "Ping ${ping}ms | Jitter ${"%.1f".format(jitter)}ms | Score $score | Loss ${"%.1f".format(loss)}%"
     }
 
     private fun createNotification(status: String): Notification {
@@ -134,9 +142,12 @@ class PingShieldVpn : VpnService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val ping = pingEngine.currentPing.value
+
         return NotificationCompat.Builder(this, PingShieldApp.VPN_CHANNEL_ID)
-            .setContentTitle("PingShield Active")
+            .setContentTitle("PingShield \u25CF ${ping}ms")
             .setContentText(status)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(status))
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
             .setOngoing(true)

@@ -2,6 +2,7 @@ package com.pingshield.ui
 
 import android.content.Intent
 import android.net.VpnService
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -72,6 +73,10 @@ fun DashboardScreen(
     val scoreBreakdown by viewModel.scoreBreakdown.collectAsState()
     val channelReport by viewModel.channelReport.collectAsState()
     val wifiWarning by viewModel.wifiWarning.collectAsState()
+    val cpuStats by viewModel.cpuStats.collectAsState()
+    val cpuThrottling by viewModel.cpuThrottling.collectAsState()
+    val speedTest by viewModel.speedTestResult.collectAsState()
+    val notifBlockerActive by viewModel.notifBlockerActive.collectAsState()
     val graphData = viewModel.pingHistory
 
     val pingColor = when {
@@ -86,13 +91,11 @@ fun DashboardScreen(
         label = "pingScale"
     )
 
-    val vpnPermissionLauncher = remember { context as? androidx.activity.ComponentActivity }?.let { activity ->
-        androidx.activity.compose.rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.StartActivityForResult()
-        ) { result ->
-            if (result.resultCode == android.app.Activity.RESULT_OK) {
-                viewModel.startVpnAndLaunchGame(context)
-            }
+    val vpnLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            viewModel.startVpnAndLaunchGame(context)
         }
     }
 
@@ -194,7 +197,54 @@ fun DashboardScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // ROW 6 - Score breakdown bars
+        // ROW 6 - CPU / Thermal stats
+        if (isVpnActive && cpuStats.coreCount > 0) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = if (cpuThrottling) Color(0xFF332200) else Color(0xFF1A1A24)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    StatItem("CPU", "${cpuStats.freqMHz}MHz")
+                    StatItem("Cores", "${cpuStats.coreCount}")
+                    StatItem("Temp", "${"%.1f".format(cpuStats.thermalCelsius)}°C")
+                    StatItem("Gov", cpuStats.gov.take(6))
+                }
+            }
+            if (cpuThrottling) {
+                Text("Thermal throttling detected!", color = Color(0xFFFFB800), fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
+        // ROW 7 - Speed test result
+        if (speedTest.isRunning) {
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A24)), shape = RoundedCornerShape(10.dp)) {
+                Text("Testing speed...", color = Color(0xFFB0B0B0), fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        if (speedTest.downloadMbps > 0) {
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A24)), shape = RoundedCornerShape(10.dp)) {
+                Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    StatItem("DL", "${speedTest.downloadMbps}Mbps")
+                    StatItem("UL", "${speedTest.uploadMbps}Mbps")
+                    StatItem("Lat", "${speedTest.latencyMs}ms")
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        if (speedTest.error.isNotEmpty()) {
+            Text(speedTest.error, color = Color(0xFFFF5252), fontSize = 12.sp)
+            Spacer(Modifier.height(8.dp))
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ROW 8 - Score breakdown bars
         ScoreBreakdown(breakdown = scoreBreakdown)
 
         Spacer(Modifier.height(12.dp))
@@ -233,25 +283,35 @@ fun DashboardScreen(
             Spacer(Modifier.height(8.dp))
         }
 
-        // ROW 9 - Buttons
-        Button(
-            onClick = {
-                if (!isVpnActive) {
-                    val intent = VpnService.prepare(context)
-                    if (intent != null) {
-                        vpnPermissionLauncher?.launch(intent)
+        // ROW 9 - Action / Speed test buttons
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    if (!isVpnActive) {
+                        val intent = VpnService.prepare(context)
+                        if (intent != null) {
+                            vpnLauncher.launch(intent)
+                        } else {
+                            viewModel.startVpnAndLaunchGame(context)
+                        }
                     } else {
                         viewModel.startVpnAndLaunchGame(context)
                     }
-                } else {
-                    viewModel.startVpnAndLaunchGame(context)
-                }
-            },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BFA5)),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Text("LAUNCH PUBG", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                },
+                modifier = Modifier.weight(1f).height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BFA5)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("LAUNCH PUBG", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+            Button(
+                onClick = { viewModel.runSpeedTest() },
+                modifier = Modifier.weight(1f).height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("SPEED TEST", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
         }
 
         Spacer(Modifier.height(10.dp))
@@ -265,7 +325,32 @@ fun DashboardScreen(
             Text("STOP", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
 
+        Spacer(Modifier.height(8.dp))
+
+        // ROW 13 - Notification blocker toggle
+        Button(
+            onClick = { viewModel.toggleNotifBlocker() },
+            modifier = Modifier.fillMaxWidth().height(44.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (notifBlockerActive) Color(0xFFEF6C00) else Color(0xFF333333)
+            ),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text(
+                if (notifBlockerActive) "NOTIF BLOCKER: ON" else "NOTIF BLOCKER: OFF",
+                color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold
+            )
+        }
+
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun StatItem(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, color = Color(0xFFE0E0E0), fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Text(label, color = Color.Gray, fontSize = 9.sp)
     }
 }
 

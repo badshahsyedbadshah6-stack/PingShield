@@ -47,6 +47,7 @@ fun SettingsScreen(
     val notifPing by viewModel.notifPing.collectAsState()
     val notifSpike by viewModel.notifSpike.collectAsState()
     val notifScore by viewModel.notifScore.collectAsState()
+    val notifBlocker by viewModel.notifBlocker.collectAsState()
 
     Column(
         modifier = Modifier
@@ -85,6 +86,7 @@ fun SettingsScreen(
         SettingsToggle("Show ping in notification", notifPing) { viewModel.toggleNotifPing(it) }
         SettingsToggle("Spike alerts", notifSpike) { viewModel.toggleNotifSpike(it) }
         SettingsToggle("Show score in notification", notifScore) { viewModel.toggleNotifScore(it) }
+        SettingsToggle("Block notifications during game", notifBlocker) { viewModel.toggleNotifBlocker(it) }
 
         Spacer(Modifier.height(24.dp))
         Card(

@@ -10,8 +10,10 @@ import com.pingshield.core.EwmaPingEstimator
 import com.pingshield.core.JitterAnalyzer
 import com.pingshield.core.PacketLossAnalyzer
 import com.pingshield.core.PingEngine
+import com.pingshield.core.SpeedTestEngine
 import com.pingshield.core.StabilityEngine
 import com.pingshield.killer.AppKiller
+import com.pingshield.monitor.CpuMonitor
 import com.pingshield.monitor.WifiChannelAnalyzer
 import com.pingshield.monitor.WifiMonitor
 import com.pingshield.utils.Constants
@@ -37,7 +39,9 @@ class DashboardViewModel @Inject constructor(
     private val adaptiveEngine: AdaptiveResponseEngine,
     private val jitterAnalyzer: JitterAnalyzer,
     private val ewmaEstimator: EwmaPingEstimator,
-    private val channelAnalyzer: WifiChannelAnalyzer
+    private val channelAnalyzer: WifiChannelAnalyzer,
+    private val cpuMonitor: CpuMonitor,
+    private val speedTestEngine: SpeedTestEngine
 ) : ViewModel() {
 
     val ping: StateFlow<Long> = pingEngine.currentPing
@@ -61,8 +65,15 @@ class DashboardViewModel @Inject constructor(
     val interferenceLevel = channelAnalyzer.interferenceLevel
     val wifiWarning: StateFlow<String> = wifiMonitor.wifiWarning
 
+    val cpuStats = cpuMonitor.stats
+    val cpuThrottling = cpuMonitor.isThrottling
+    val speedTestResult = speedTestEngine.result
+
     private val _isVpnActive = MutableStateFlow(false)
     val isVpnActive: StateFlow<Boolean> = _isVpnActive.asStateFlow()
+
+    private val _notifBlockerActive = MutableStateFlow(false)
+    val notifBlockerActive: StateFlow<Boolean> = _notifBlockerActive.asStateFlow()
 
     fun startVpn(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -70,6 +81,7 @@ class DashboardViewModel @Inject constructor(
             dnsManager.preResolveDomains()
             dnsManager.activate()
             channelAnalyzer.start()
+            cpuMonitor.start()
             PingShieldVpn.startVpn(context)
             _isVpnActive.value = true
         }
@@ -81,15 +93,28 @@ class DashboardViewModel @Inject constructor(
             dnsManager.preResolveDomains()
             dnsManager.activate()
             channelAnalyzer.start()
+            cpuMonitor.start()
             PingShieldVpn.startVpn(context)
             _isVpnActive.value = true
             launchPubg(context)
         }
     }
 
+    fun runSpeedTest() {
+        viewModelScope.launch { speedTestEngine.runTest() }
+    }
+
+    fun toggleNotifBlocker() {
+        val newState = !_notifBlockerActive.value
+        _notifBlockerActive.value = newState
+        com.pingshield.vpn.GameNotificationBlocker.isActive = newState
+    }
+
     fun onStop(context: Context) {
         PingShieldVpn.stopVpn(context)
         _isVpnActive.value = false
+        cpuMonitor.stop()
+        speedTestEngine.reset()
     }
 
     private fun launchPubg(context: Context) {

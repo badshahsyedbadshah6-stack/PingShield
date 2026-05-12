@@ -79,6 +79,9 @@ class PrefsManager @Inject constructor(
     fun showScoreInNotification(): Boolean = prefs.getBoolean("notif_score", true)
     fun setShowScoreInNotification(enabled: Boolean) = prefs.edit().putBoolean("notif_score", enabled).apply()
 
+    fun isNotifBlockerEnabled(): Boolean = prefs.getBoolean("notif_blocker", false)
+    fun setNotifBlockerEnabled(enabled: Boolean) = prefs.edit().putBoolean("notif_blocker", enabled).apply()
+
     fun killOnLaunch(pkg: String): Boolean = prefs.getBoolean("kill_launch_$pkg", true)
     fun setKillOnLaunch(pkg: String, enabled: Boolean) = prefs.edit().putBoolean("kill_launch_$pkg", enabled).apply()
 

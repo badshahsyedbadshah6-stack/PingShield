@@ -30,6 +30,7 @@ class SettingsViewModel @Inject constructor(
     val notifPing = MutableStateFlow(prefsManager.showPingInNotification())
     val notifSpike = MutableStateFlow(prefsManager.showSpikeAlerts())
     val notifScore = MutableStateFlow(prefsManager.showScoreInNotification())
+    val notifBlocker = MutableStateFlow(prefsManager.isNotifBlockerEnabled())
 
     fun toggleAutoStart(v: Boolean) { autoStart.value = v; prefsManager.setAutoStartEnabled(v) }
     fun toggleAutoFlushDns(v: Boolean) { autoFlushDns.value = v; prefsManager.setAutoFlushDns(v) }
@@ -44,6 +45,7 @@ class SettingsViewModel @Inject constructor(
     fun toggleNotifPing(v: Boolean) { notifPing.value = v; prefsManager.setShowPingInNotification(v) }
     fun toggleNotifSpike(v: Boolean) { notifSpike.value = v; prefsManager.setShowSpikeAlerts(v) }
     fun toggleNotifScore(v: Boolean) { notifScore.value = v; prefsManager.setShowScoreInNotification(v) }
+    fun toggleNotifBlocker(v: Boolean) { notifBlocker.value = v; prefsManager.setNotifBlockerEnabled(v) }
     fun setSpikeSensitivity(v: String) { spikeSensitivity.value = v; prefsManager.setSpikeSensitivity(v) }
     fun setDnsPrimary(v: String) { dnsPrimary.value = v; prefsManager.setDnsPrimary(v) }
     fun setLossThreshold(v: Float) { lossThreshold.value = v; prefsManager.setLossReconnectThreshold(v) }

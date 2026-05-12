@@ -64,5 +64,16 @@ object Constants {
         PingTarget("9.9.9.9", 53, "Quad9")
     )
 
+    const val NOTIF_CHANNEL_LIVE = "pingshield_live"
+    const val NOTIF_CHANNEL_LIVE_NAME = "Live Ping Data"
+    const val NOTIF_CHANNEL_BLOCKER = "pingshield_blocker"
+    const val NOTIF_CHANNEL_BLOCKER_NAME = "Notification Blocker"
+    const val NOTIF_ID_LIVE = 1002
+    const val NOTIF_ID_BLOCKER = 1003
+
+    const val SPEED_TEST_TIMEOUT_MS = 10_000L
+    const val CPU_MONITOR_INTERVAL_MS = 2000L
+    const val THERMAL_THROTTLE_CELSIUS = 65f
+
     data class PingTarget(val host: String, val port: Int, val label: String)
 }
