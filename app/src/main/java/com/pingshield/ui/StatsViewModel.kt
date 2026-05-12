@@ -19,7 +19,7 @@ class StatsViewModel @Inject constructor(
     private val appKiller: AppKiller,
     private val adaptiveEngine: AdaptiveResponseEngine,
     private val ewmaEstimator: EwmaPingEstimator
-) {
+) : ViewModel() {
     val ping: StateFlow<Long> = pingEngine.currentPing
     val jitter: StateFlow<Double> = jitterAnalyzer.ipdv
     val loss: StateFlow<Double> = packetLossAnalyzer.lossPercent
