@@ -1,10 +1,10 @@
 # 🛡️ PingShield
 ### The Ultimate PUBG Mobile Network Optimizer
 
-![Build Status](https://github.com/badshah-ai-hue/PingShield/actions/workflows/build-apk.yml/badge.svg)
+![Build Status](https://github.com/badshahsyedbadshah6-stack/PingShield/actions/workflows/build-apk.yml/badge.svg)
 
 ## ⬇️ Download Latest APK
-👉 Go to [Releases](https://github.com/badshah-ai-hue/PingShield/releases/latest)
+👉 Go to [Releases](https://github.com/badshahsyedbadshah6-stack/PingShield/releases/latest)
 👉 Download PingShield.apk
 👉 Install on your Android phone
 
@@ -28,7 +28,7 @@
 
 ## Build from Source
 ```bash
-git clone https://github.com/badshah-ai-hue/PingShield.git
+git clone https://github.com/badshahsyedbadshah6-stack/PingShield.git
 cd PingShield
 ./gradlew assembleDebug
 # APK at app/build/outputs/apk/debug/app-debug.apk
