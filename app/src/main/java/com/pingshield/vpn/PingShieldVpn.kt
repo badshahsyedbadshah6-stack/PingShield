@@ -65,11 +65,11 @@ class PingShieldVpn : VpnService() {
     private fun startVpnInternal() {
         try {
             val builder = Builder()
-            builder.setName(Constants.VPN_SESSION)
+            builder.setSession(Constants.VPN_SESSION)
             builder.setMtu(Constants.VPN_MTU)
             builder.addAddress(Constants.VPN_ADDRESS, Constants.VPN_PREFIX_LENGTH)
             builder.addRoute("0.0.0.0", 0)
-            builder.addDnsServer(Constants.DNS_PRIMARY)
+            builder.addDnsServer(java.net.InetAddress.getByName(Constants.DNS_PRIMARY))
             builder.setBlocking(true)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

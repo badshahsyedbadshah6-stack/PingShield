@@ -49,7 +49,6 @@ class PacketLossDetector @Inject constructor() {
         var received = 0
         val sent = Constants.PACKET_LOSS_TEST_COUNT
         for (i in 0 until sent) {
-            if (!isActive) break
             val success = withTimeoutOrNull(Constants.PACKET_LOSS_TIMEOUT_MS) {
                 try {
                     val addr = InetAddress.getByName(Constants.DNS_PRIMARY)

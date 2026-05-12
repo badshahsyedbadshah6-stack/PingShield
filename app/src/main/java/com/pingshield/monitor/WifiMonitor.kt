@@ -65,12 +65,12 @@ class WifiMonitor @Inject constructor(
         }
     }
 
-    private suspend fun updateRssi(value: Int) {
+    private fun updateRssi(value: Int) {
         _rssi.value = value
         if (value < Constants.RSSI_CRITICAL_THRESHOLD) {
-            criticalEvent.emit(value)
+            criticalEvent.tryEmit(value)
         } else if (value < Constants.RSSI_WARNING_THRESHOLD) {
-            warningEvent.emit(value)
+            warningEvent.tryEmit(value)
         }
     }
 
