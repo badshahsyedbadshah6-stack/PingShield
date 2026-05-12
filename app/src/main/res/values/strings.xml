@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PingShield</string>
+    <string name="channel_name">PingShield VPN Service</string>
+    <string name="channel_description">PingShield VPN foreground service notification</string>
+    <string name="notification_title">PingShield Active</string>
+    <string name="notification_text">Optimizing network for PUBG Mobile</string>
+</resources>
