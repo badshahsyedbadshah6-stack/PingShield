@@ -34,27 +34,3 @@ jobs:
           name: PingShield-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        if: github.ref == 'refs/heads/main'
-        with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: PingShield v1.0.${{ github.run_number }}
-          body: |
-            🛡️ PingShield - Live Build
-            
-            ✅ Auto-built from latest code
-            📱 Install on any Android 11+ device
-            🎮 Optimized for PUBG Mobile
-            
-            HOW TO INSTALL:
-            1. Download PingShield.apk below
-            2. On your phone: Settings → Apps → 
-               Special App Access → Install Unknown Apps → Allow
-            3. Open the downloaded APK and tap Install
-          files: app/build/outputs/apk/debug/app-debug.apk
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
