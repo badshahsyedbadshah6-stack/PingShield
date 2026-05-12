@@ -16,53 +16,36 @@ import javax.inject.Singleton
 
 @Singleton
 class BandwidthMonitor @Inject constructor() {
-
     private val _downloadSpeed = MutableStateFlow(0L)
     val downloadSpeed: StateFlow<Long> = _downloadSpeed.asStateFlow()
-
     private val _uploadSpeed = MutableStateFlow(0L)
     val uploadSpeed: StateFlow<Long> = _uploadSpeed.asStateFlow()
-
     private var scope: CoroutineScope? = null
-    private var job: Job? = null
 
     fun start() {
         stop()
         scope = CoroutineScope(Dispatchers.IO + Job())
-
-        var lastRxBytes = TrafficStats.getTotalRxBytes()
-        var lastTxBytes = TrafficStats.getTotalTxBytes()
+        var lastRx = TrafficStats.getTotalRxBytes()
+        var lastTx = TrafficStats.getTotalTxBytes()
         var lastTime = System.currentTimeMillis()
-
-        job = scope?.launch {
+        scope?.launch {
             while (isActive) {
-                val currentRx = TrafficStats.getTotalRxBytes()
-                val currentTx = TrafficStats.getTotalTxBytes()
-                val currentTime = System.currentTimeMillis()
-
-                val elapsed = currentTime - lastTime
+                val rx = TrafficStats.getTotalRxBytes()
+                val tx = TrafficStats.getTotalTxBytes()
+                val now = System.currentTimeMillis()
+                val elapsed = now - lastTime
                 if (elapsed > 0) {
-                    val rxSpeed = ((currentRx - lastRxBytes) * 1000) / elapsed
-                    val txSpeed = ((currentTx - lastTxBytes) * 1000) / elapsed
-                    _downloadSpeed.value = rxSpeed
-                    _uploadSpeed.value = txSpeed
+                    _downloadSpeed.value = ((rx - lastRx) * 1000) / elapsed
+                    _uploadSpeed.value = ((tx - lastTx) * 1000) / elapsed
                 }
-
-                lastRxBytes = currentRx
-                lastTxBytes = currentTx
-                lastTime = currentTime
-
+                lastRx = rx; lastTx = tx; lastTime = now
                 delay(1000)
             }
         }
     }
 
     fun stop() {
-        job?.cancel()
-        scope?.cancel()
-        scope = null
-        job = null
-        _downloadSpeed.value = 0L
-        _uploadSpeed.value = 0L
+        scope?.cancel(); scope = null
+        _downloadSpeed.value = 0L; _uploadSpeed.value = 0L
     }
 }

@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -20,9 +22,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,148 +35,101 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val autoStart by viewModel.autoStart.collectAsState()
-    var whitelistInput by remember { mutableStateOf("") }
+    val autoFlushDns by viewModel.autoFlushDns.collectAsState()
+    val preResolve by viewModel.preResolve.collectAsState()
+    val wifiLowLatency by viewModel.wifiLowLatency.collectAsState()
+    val wakeLock by viewModel.wakeLock.collectAsState()
+    val perfMode by viewModel.perfMode.collectAsState()
+    val autoSwitchMobile by viewModel.autoSwitchMobile.collectAsState()
+    val dscpMarking by viewModel.dscpMarking.collectAsState()
+    val tcpPsh by viewModel.tcpPsh.collectAsState()
+    val autoReconnectBurst by viewModel.autoReconnectBurst.collectAsState()
+    val notifPing by viewModel.notifPing.collectAsState()
+    val notifSpike by viewModel.notifSpike.collectAsState()
+    val notifScore by viewModel.notifScore.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D0D))
+            .background(Color(0xFF0A0A0F))
+            .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Text(
-            text = "Settings",
-            color = Color(0xFF00E5FF),
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Text("Settings", color = Color(0xFF00E5CC), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(16.dp))
 
-        Spacer(modifier = Modifier.height(24.dp))
+        // General
+        SectionTitle("General")
+        SettingsToggle("Auto-start on Boot", autoStart) { viewModel.toggleAutoStart(it) }
+        SettingsToggle("Pre-resolve DNS on launch", preResolve) { viewModel.togglePreResolve(it) }
 
-        // Auto-start toggle
+        Spacer(Modifier.height(16.dp))
+        SectionTitle("DNS")
+        SettingsToggle("Auto-flush DNS on spike", autoFlushDns) { viewModel.toggleAutoFlushDns(it) }
+        SettingsToggle("Auto-reconnect on burst loss", autoReconnectBurst) { viewModel.toggleAutoReconnectBurst(it) }
+
+        Spacer(Modifier.height(16.dp))
+        SectionTitle("WiFi")
+        SettingsToggle("WiFi Low Latency Lock", wifiLowLatency) { viewModel.toggleWifiLowLatency(it) }
+        SettingsToggle("CPU Wake Lock", wakeLock) { viewModel.toggleWakeLock(it) }
+        SettingsToggle("Performance Mode (Android 12+)", perfMode) { viewModel.togglePerfMode(it) }
+        SettingsToggle("Auto-switch to Mobile Data", autoSwitchMobile) { viewModel.toggleAutoSwitchMobile(it) }
+
+        Spacer(Modifier.height(16.dp))
+        SectionTitle("VPN")
+        SettingsToggle("DSCP Packet Marking", dscpMarking) { viewModel.toggleDscpMarking(it) }
+        SettingsToggle("TCP PSH Flag Forcing", tcpPsh) { viewModel.toggleTcpPsh(it) }
+
+        Spacer(Modifier.height(16.dp))
+        SectionTitle("Notifications")
+        SettingsToggle("Show ping in notification", notifPing) { viewModel.toggleNotifPing(it) }
+        SettingsToggle("Spike alerts", notifSpike) { viewModel.toggleNotifSpike(it) }
+        SettingsToggle("Show score in notification", notifScore) { viewModel.toggleNotifScore(it) }
+
+        Spacer(Modifier.height(24.dp))
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A24)),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Auto-start on Boot",
-                        color = Color.White,
-                        fontSize = 16.sp
-                    )
-                    Text(
-                        text = "Automatically start VPN when device boots",
-                        color = Color.Gray,
-                        fontSize = 13.sp
-                    )
-                }
-                Switch(
-                    checked = autoStart,
-                    onCheckedChange = { viewModel.toggleAutoStart(it) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color(0xFF00E5FF),
-                        checkedTrackColor = Color(0xFF00838F)
-                    )
-                )
+            Column(Modifier.padding(16.dp)) {
+                Text("About", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(6.dp))
+                Text("PingShield v2.0.0", color = Color(0xFFB0B0B0), fontSize = 13.sp)
+                Text("Real-time network optimizer for PUBG Mobile", color = Color(0xFFB0B0B0), fontSize = 12.sp)
             }
         }
+        Spacer(Modifier.height(20.dp))
+    }
+}
 
-        Spacer(modifier = Modifier.height(16.dp))
+@Composable
+private fun SectionTitle(text: String) {
+    Text(text, color = Color(0xFF00E5CC), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(6.dp))
+}
 
-        // DNS configuration
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
-            shape = RoundedCornerShape(12.dp)
+@Composable
+private fun SettingsToggle(label: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A24)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "DNS Configuration",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+            Text(label, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Switch(
+                checked = checked,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color(0xFF00E5CC),
+                    checkedTrackColor = Color(0xFF008380)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Primary: 1.1.1.1 (Cloudflare)",
-                    color = Color(0xFF00E676),
-                    fontSize = 14.sp
-                )
-                Text(
-                    text = "Fallback: 8.8.8.8 (Google)",
-                    color = Color(0xFFB0B0B0),
-                    fontSize = 14.sp
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // VPN info
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "VPN Configuration",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Virtual IP: 10.0.0.2",
-                    color = Color(0xFFB0B0B0),
-                    fontSize = 14.sp
-                )
-                Text(
-                    text = "MTU: 1500",
-                    color = Color(0xFFB0B0B0),
-                    fontSize = 14.sp
-                )
-                Text(
-                    text = "Session: PingShield",
-                    color = Color(0xFFB0B0B0),
-                    fontSize = 14.sp
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // About section
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "About",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "PingShield v1.0.0",
-                    color = Color(0xFFB0B0B0),
-                    fontSize = 14.sp
-                )
-                Text(
-                    text = "Real-time network optimizer for PUBG Mobile",
-                    color = Color(0xFFB0B0B0),
-                    fontSize = 13.sp
-                )
-            }
+            )
         }
     }
 }

@@ -10,16 +10,13 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class BootReceiver : BroadcastReceiver() {
 
-    @Inject
-    lateinit var prefsManager: PrefsManager
+    @Inject lateinit var prefsManager: PrefsManager
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            if (prefsManager.isAutoStartEnabled()) {
-                val vpnIntent = PingShieldVpn.prepare(context)
-                if (vpnIntent == null) {
-                    PingShieldVpn.startVpn(context)
-                }
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED && prefsManager.isAutoStartEnabled()) {
+            val vpnIntent = PingShieldVpn.prepare(context)
+            if (vpnIntent == null) {
+                PingShieldVpn.startVpn(context)
             }
         }
     }

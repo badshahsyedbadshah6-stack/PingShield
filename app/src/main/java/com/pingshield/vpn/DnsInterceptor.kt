@@ -9,7 +9,6 @@ import javax.inject.Singleton
 
 @Singleton
 class DnsInterceptor @Inject constructor() {
-
     private var dnsSocket: DatagramSocket? = null
 
     fun interceptDns(data: ByteArray): ByteArray {
@@ -19,25 +18,14 @@ class DnsInterceptor @Inject constructor() {
             val packet = DatagramPacket(data, data.size, dnsServer, 53)
             socket.soTimeout = 2000
             socket.send(packet)
-
-            val receiveBuffer = ByteArray(512)
-            val receivePacket = DatagramPacket(receiveBuffer, receiveBuffer.size)
-            socket.receive(receivePacket)
+            val buf = ByteArray(512)
+            val recv = DatagramPacket(buf, buf.size)
+            socket.receive(recv)
             socket.close()
-            receivePacket.data.copyOf(receivePacket.length)
-        } catch (e: Exception) {
-            data
-        }
+            recv.data.copyOf(recv.length)
+        } catch (_: Exception) { data }
     }
 
-    fun start() {
-        dnsSocket = DatagramSocket()
-    }
-
-    fun stop() {
-        try {
-            dnsSocket?.close()
-        } catch (_: Exception) {}
-        dnsSocket = null
-    }
+    fun start() { dnsSocket = DatagramSocket() }
+    fun stop() { try { dnsSocket?.close() } catch (_: Exception) {}; dnsSocket = null }
 }

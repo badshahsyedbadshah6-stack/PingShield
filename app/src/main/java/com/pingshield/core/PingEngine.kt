@@ -4,8 +4,8 @@ import com.pingshield.utils.Constants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,76 +17,101 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class PingEngine @Inject constructor() {
+class PingEngine @Inject constructor(
+    private val ewmaEstimator: EwmaPingEstimator,
+    private val jitterAnalyzer: JitterAnalyzer
+) {
+    private val _currentPing = MutableStateFlow(0L)
+    val currentPing: StateFlow<Long> = _currentPing.asStateFlow()
 
-    private val _currentPing = MutableStateFlow(0)
-    val currentPing: StateFlow<Int> = _currentPing.asStateFlow()
+    private val _isSpike = MutableStateFlow(false)
+    val isSpike: StateFlow<Boolean> = _isSpike.asStateFlow()
 
-    private val _spikeDetected = MutableStateFlow(false)
-    val spikeDetected: StateFlow<Boolean> = _spikeDetected.asStateFlow()
+    private val _pingHistory = MutableStateFlow<List<Long>>(emptyList())
+    val pingHistory: StateFlow<List<Long>> = _pingHistory.asStateFlow()
 
-    private val rollingPings = mutableListOf<Long>()
+    private val history = mutableListOf<Long>()
+    private val sockets = mutableMapOf<String, Socket?>()
     private var scope: CoroutineScope? = null
-    private var job: Job? = null
 
     fun start() {
         stop()
-        rollingPings.clear()
-        _currentPing.value = 0
-        _spikeDetected.value = false
+        history.clear()
+        _currentPing.value = 0L
+        _isSpike.value = false
 
         scope = CoroutineScope(Dispatchers.IO + Job())
-        job = scope?.launch {
-            while (isActive) {
-                val pingMs = measurePing()
-                if (pingMs >= 0) {
-                    rollingPings.add(pingMs)
-                    if (rollingPings.size > Constants.ROLLING_PING_SIZE) {
-                        rollingPings.removeAt(0)
-                    }
-                    _currentPing.value = pingMs.toInt()
+        Constants.PING_TARGETS.forEach { target ->
+            sockets[target.host] = null
+        }
 
-                    if (rollingPings.size >= 3) {
-                        val avg = rollingPings.average()
-                        if (pingMs > avg + Constants.SPIKE_THRESHOLD_MS) {
-                            _spikeDetected.value = true
-                        } else {
-                            _spikeDetected.value = false
-                        }
+        scope?.launch {
+            while (isActive) {
+                val results = mutableListOf<Long>()
+                val deferred = Constants.PING_TARGETS.map { target ->
+                    async {
+                        measureTarget(target.host, target.port)
                     }
                 }
-                delay(Constants.PING_INTERVAL_MS)
+                deferred.forEach { results.add(it.await()) }
+
+                val validResults = results.filter { it >= 0 }
+                if (validResults.isNotEmpty()) {
+                    val minPing = validResults.min()
+                    _currentPing.value = minPing
+
+                    history.add(minPing)
+                    if (history.size > Constants.GRAPH_SIZE) {
+                        history.removeAt(0)
+                    }
+                    _pingHistory.value = history.toList()
+
+                    val minDouble = minPing.toDouble()
+                    ewmaEstimator.update(minDouble)
+                    jitterAnalyzer.addSample(minDouble)
+
+                    _isSpike.value = ewmaEstimator.isSpike(minDouble)
+                }
+
+                kotlinx.coroutines.delay(Constants.PING_INTERVAL_MS)
             }
         }
     }
 
-    fun getRollingAverage(): Double {
-        if (rollingPings.isEmpty()) return 0.0
-        return rollingPings.average()
-    }
-
-    fun getHistory(): List<Long> = rollingPings.toList()
-
-    fun stop() {
-        job?.cancel()
-        scope?.cancel()
-        scope = null
-        job = null
-        rollingPings.clear()
-        _currentPing.value = 0
-        _spikeDetected.value = false
-    }
-
-    private fun measurePing(): Long {
+    private fun measureTarget(host: String, port: Int): Long {
         return try {
-            val socket = Socket()
+            var socket = sockets[host]
+            if (socket == null || !socket.isConnected) {
+                socket = Socket()
+                socket.connect(InetSocketAddress(host, port), 1000)
+                sockets[host] = socket
+            }
             val start = System.nanoTime()
-            socket.connect(InetSocketAddress(Constants.PING_TARGET, Constants.PING_PORT), 1000)
+            socket.soTimeout = 500
+            socket.sendUrgentData(0)
             val end = System.nanoTime()
-            socket.close()
             (end - start) / 1_000_000
         } catch (e: Exception) {
+            try {
+                sockets[host]?.close()
+            } catch (_: Exception) {}
+            sockets[host] = null
             -1L
         }
+    }
+
+    fun stop() {
+        scope?.cancel()
+        scope = null
+        sockets.forEach { (_, socket) ->
+            try { socket?.close() } catch (_: Exception) {}
+        }
+        sockets.clear()
+        history.clear()
+        _pingHistory.value = emptyList()
+        _currentPing.value = 0L
+        _isSpike.value = false
+        ewmaEstimator.reset()
+        jitterAnalyzer.reset()
     }
 }

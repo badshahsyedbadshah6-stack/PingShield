@@ -6,7 +6,7 @@ import android.app.NotificationManager
 import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
-class PingShieldApplication : Application() {
+class PingShieldApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
@@ -19,7 +19,7 @@ class PingShieldApplication : Application() {
             "PingShield VPN Service",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "PingShield VPN foreground service notification"
+            description = "PingShield VPN foreground service"
             setShowBadge(false)
         }
         val manager = getSystemService(NotificationManager::class.java)
@@ -27,6 +27,6 @@ class PingShieldApplication : Application() {
     }
 
     companion object {
-        const val VPN_CHANNEL_ID = "pingshield_vpn_channel"
+        const val VPN_CHANNEL_ID = "pingshield_vpn"
     }
 }

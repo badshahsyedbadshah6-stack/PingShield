@@ -12,31 +12,19 @@ import javax.inject.Singleton
 
 @Singleton
 class BandwidthThrottler @Inject constructor() {
-
     private val _throttledApps = MutableStateFlow<List<String>>(emptyList())
     val throttledApps: StateFlow<List<String>> = _throttledApps.asStateFlow()
-
     private var scope: CoroutineScope? = null
 
-    fun throttleApp(packageName: String) {
-        val current = _throttledApps.value.toMutableList()
-        if (!current.contains(packageName)) {
-            current.add(packageName)
-            _throttledApps.value = current
-        }
+    fun throttleApp(pkg: String) {
+        val cur = _throttledApps.value.toMutableList()
+        if (!cur.contains(pkg)) { cur.add(pkg); _throttledApps.value = cur }
     }
 
-    fun removeThrottle(packageName: String) {
-        _throttledApps.value = _throttledApps.value.filter { it != packageName }
+    fun removeThrottle(pkg: String) {
+        _throttledApps.value = _throttledApps.value.filter { it != pkg }
     }
 
-    fun clearAll() {
-        _throttledApps.value = emptyList()
-    }
-
-    fun stop() {
-        clearAll()
-        scope?.cancel()
-        scope = null
-    }
+    fun clearAll() { _throttledApps.value = emptyList() }
+    fun stop() { clearAll(); scope?.cancel(); scope = null }
 }

@@ -8,12 +8,13 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
-import com.pingshield.PingShieldApplication
+import com.pingshield.PingShieldApp
 import com.pingshield.R
-import com.pingshield.core.DnsManager
-import com.pingshield.core.PacketLossDetector
 import com.pingshield.core.PingEngine
 import com.pingshield.core.StabilityEngine
+import com.pingshield.core.DnsManager
+import com.pingshield.killer.AppKiller
+import com.pingshield.monitor.NetworkSwitcher
 import com.pingshield.ui.MainActivity
 import com.pingshield.utils.Constants
 import dagger.hilt.android.AndroidEntryPoint
@@ -22,13 +23,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -37,9 +35,10 @@ class PingShieldVpn : VpnService() {
     @Inject lateinit var pingEngine: PingEngine
     @Inject lateinit var stabilityEngine: StabilityEngine
     @Inject lateinit var dnsManager: DnsManager
-    @Inject lateinit var packetLossDetector: PacketLossDetector
+    @Inject lateinit var appKiller: AppKiller
+    @Inject lateinit var networkSwitcher: NetworkSwitcher
+    @Inject lateinit var packetProcessor: PacketProcessor
     @Inject lateinit var trafficController: TrafficController
-    @Inject lateinit var dnsInterceptor: DnsInterceptor
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var scope: CoroutineScope? = null
@@ -47,7 +46,7 @@ class PingShieldVpn : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
-        startForeground(NOTIFICATION_ID, createNotification(0, false))
+        startForeground(NOTIFICATION_ID, createNotification("Starting..."))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -55,10 +54,7 @@ class PingShieldVpn : VpnService() {
             stopVpn()
             return START_NOT_STICKY
         }
-
-        if (!isRunning) {
-            startVpnInternal()
-        }
+        if (!isRunning) startVpnInternal()
         return START_STICKY
     }
 
@@ -66,112 +62,81 @@ class PingShieldVpn : VpnService() {
         try {
             val builder = Builder()
             builder.setSession(Constants.VPN_SESSION)
-            builder.setMtu(Constants.VPN_MTU)
             builder.addAddress(Constants.VPN_ADDRESS, Constants.VPN_PREFIX_LENGTH)
             builder.addRoute("0.0.0.0", 0)
             builder.addDnsServer(java.net.InetAddress.getByName(Constants.DNS_PRIMARY))
-            builder.setBlocking(true)
+            builder.setMtu(Constants.VPN_MTU)
+            builder.setBlocking(false)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setMetered(false)
             }
 
-            vpnInterface = builder.establish() ?: throw Exception("VPN establish failed")
-            isRunning = true
+            for (pkg in appKiller.getBlockedPackages()) {
+                try { builder.addDisallowedApplication(pkg) } catch (_: Exception) {}
+            }
 
+            vpnInterface = builder.establish()
+            if (vpnInterface == null) {
+                stopSelf()
+                return
+            }
+
+            isRunning = true
             trafficController.loadWhitelist()
-            dnsInterceptor.start()
             stabilityEngine.start()
 
+            val input = FileInputStream(vpnInterface?.fileDescriptor)
+            val output = FileOutputStream(vpnInterface?.fileDescriptor)
+            packetProcessor.setStreams(input, output)
+            packetProcessor.setWhitelist(trafficController.getWhitelist())
+
             scope = CoroutineScope(Dispatchers.IO + Job())
-            startPacketLoop()
-            startNotificationUpdater()
+            scope?.launch {
+                while (isActive) {
+                    try {
+                        packetProcessor.processAndForward()
+                    } catch (_: Exception) {
+                        delay(10)
+                    }
+                }
+            }
+
+            scope?.launch {
+                while (isActive) {
+                    val status = buildStatusText()
+                    val notification = createNotification(status)
+                    val manager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+                    manager.notify(NOTIFICATION_ID, notification)
+                    delay(1000)
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             stopVpn()
         }
     }
 
-    private fun startPacketLoop() {
-        scope?.launch {
-            val input = FileInputStream(vpnInterface?.fileDescriptor)
-            val output = FileOutputStream(vpnInterface?.fileDescriptor)
-            val buffer = ByteBuffer.allocate(32767)
-
-            while (isActive) {
-                try {
-                    buffer.clear()
-                    val length = input.read(buffer.array())
-                    if (length > 0) {
-                        buffer.limit(length)
-                        val packet = ByteArray(length)
-                        buffer.get(packet)
-
-                        val processed = processPacket(packet)
-                        if (processed != null) {
-                            output.write(processed)
-                            output.flush()
-                        }
-                    }
-                } catch (e: Exception) {
-                    if (isActive) {
-                        delay(100)
-                    }
-                }
-            }
-
-            try {
-                input.close()
-                output.close()
-            } catch (_: Exception) {}
-        }
+    private fun buildStatusText(): String {
+        val ping = pingEngine.currentPing.value
+        return "Ping: ${ping}ms | VPN Active"
     }
 
-    private fun processPacket(data: ByteArray): ByteArray? {
-        if (data.size < 20) return null
-        val version = (data[0].toInt() shr 4) and 0x0F
-        if (version != 4 && version != 6) return null
-
-        val protocol = data[9].toInt() and 0xFF
-        if (protocol == 17) {
-            return dnsInterceptor.interceptDns(data)
-        }
-
-        return data
-    }
-
-    private fun startNotificationUpdater() {
-        scope?.launch {
-            while (isActive) {
-                val ping = pingEngine.currentPing.first()
-                val notification = createNotification(ping, true)
-                val manager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
-                manager.notify(NOTIFICATION_ID, notification)
-                delay(1000)
-            }
-        }
-    }
-
-    private fun createNotification(ping: Int, isActive: Boolean): Notification {
+    private fun createNotification(status: String): Notification {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
-        val stopIntent = Intent(this, PingShieldVpn::class.java).apply {
-            action = ACTION_STOP
-        }
+        val stopIntent = Intent(this, PingShieldVpn::class.java).apply { action = ACTION_STOP }
         val stopPendingIntent = PendingIntent.getService(
             this, 1, stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val statusText = if (isActive) "Ping: ${ping}ms" else "Initializing..."
-
-        return NotificationCompat.Builder(this, PingShieldApplication.VPN_CHANNEL_ID)
+        return NotificationCompat.Builder(this, PingShieldApp.VPN_CHANNEL_ID)
             .setContentTitle("PingShield Active")
-            .setContentText(statusText)
+            .setContentText(status)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -182,49 +147,38 @@ class PingShieldVpn : VpnService() {
 
     private fun stopVpn() {
         isRunning = false
-        try {
-            vpnInterface?.close()
-        } catch (_: Exception) {}
-        vpnInterface = null
         stabilityEngine.stop()
-        dnsInterceptor.stop()
+        packetProcessor.close()
+        try { vpnInterface?.close() } catch (_: Exception) {}
+        vpnInterface = null
         scope?.cancel()
         scope = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    override fun onRevoke() {
-        stopVpn()
-    }
-
-    override fun onDestroy() {
-        stopVpn()
-        super.onDestroy()
-    }
+    override fun onRevoke() { stopVpn() }
+    override fun onDestroy() { stopVpn(); super.onDestroy() }
 
     companion object {
         const val ACTION_STOP = "com.pingshield.STOP_VPN"
         private const val NOTIFICATION_ID = 1001
 
-        fun prepare(context: Context): Intent? {
-            return VpnService.prepare(context)
-        }
+        fun prepare(context: Context): Intent? = VpnService.prepare(context)
 
         fun startVpn(context: Context) {
             val intent = Intent(context, PingShieldVpn::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 context.startForegroundService(intent)
-            } else {
+            else
                 context.startService(intent)
-            }
         }
 
         fun stopVpn(context: Context) {
-            val intent = Intent(context, PingShieldVpn::class.java).apply {
+            Intent(context, PingShieldVpn::class.java).apply {
                 action = ACTION_STOP
+                context.startService(this)
             }
-            context.startService(intent)
         }
     }
 }

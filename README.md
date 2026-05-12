@@ -1,35 +1,25 @@
-# 🛡️ PingShield
-### The Ultimate PUBG Mobile Network Optimizer
+# PingShield
+### Real-time Network Optimizer for PUBG Mobile
 
 ![Build Status](https://github.com/badshahsyedbadshah6-stack/PingShield/actions/workflows/build-apk.yml/badge.svg)
 
-## ⬇️ Download Latest APK
-👉 Go to [Releases](https://github.com/badshahsyedbadshah6-stack/PingShield/releases/latest)
-👉 Download PingShield.apk
-👉 Install on your Android phone
+## Features
+- Multi-target ping engine (3 servers simultaneously)
+- EWMA spike detection (RFC 6298)
+- Jitter analysis (MAD + IPDV)
+- Gilbert-Elliott burst loss detection
+- Adaptive weighted network scoring
+- DSCP packet marking for traffic prioritization
+- WiFi channel interference analysis
+- WiFi low-latency lock + CPU wake lock
+- Two-phase app killing (proactive + reactive)
+- Pre-resolution of PUBG DNS domains
+- Foreground VPN service
 
-## What it does
-- Blocks all background apps during your PUBG match
-- Monitors ping every 200ms live
-- Auto-fixes spikes in under 200ms
-- Zero ads, zero root, zero cost
+## Download
+Latest APK: [Releases](https://github.com/badshahsyedbadshah6-stack/PingShield/releases/latest)
 
 ## Requirements
-- Android 11 or higher
+- Android 11+
 - PUBG Mobile installed
-
-## Tech Stack
-- **Language:** Kotlin (100%, no Java)
-- **UI:** Jetpack Compose with Material 3
-- **Architecture:** MVVM with Hilt DI
-- **Async:** Kotlin Coroutines + StateFlow
-- **VPN:** Android VpnService (tun0 interface)
-- **Build:** Gradle with GitHub Actions CI/CD
-
-## Build from Source
-```bash
-git clone https://github.com/badshahsyedbadshah6-stack/PingShield.git
-cd PingShield
-./gradlew assembleDebug
-# APK at app/build/outputs/apk/debug/app-debug.apk
-```
+- Usage Stats permission

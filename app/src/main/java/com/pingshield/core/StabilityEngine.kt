@@ -12,6 +12,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,60 +21,68 @@ import javax.inject.Singleton
 class StabilityEngine @Inject constructor(
     private val pingEngine: PingEngine,
     private val wifiMonitor: WifiMonitor,
-    private val packetLossDetector: PacketLossDetector,
+    private val packetLossAnalyzer: PacketLossAnalyzer,
     private val dnsManager: DnsManager,
     private val appScanner: AppScanner,
     private val appKiller: AppKiller,
     private val syncBlocker: SyncBlocker,
-    private val networkSwitcher: NetworkSwitcher
+    private val networkSwitcher: NetworkSwitcher,
+    private val adaptiveEngine: AdaptiveResponseEngine,
+    private val jitterAnalyzer: JitterAnalyzer
 ) {
-
-    private val _currentAction = MutableStateFlow("Initializing...")
-    val currentAction: StateFlow<String> = _currentAction.asStateFlow()
+    private val _actionText = MutableStateFlow("Initializing...")
+    val actionText: StateFlow<String> = _actionText.asStateFlow()
 
     private var scope: CoroutineScope? = null
 
     fun start() {
         scope = CoroutineScope(Dispatchers.Default + Job())
-
         pingEngine.start()
         wifiMonitor.start()
-        packetLossDetector.start()
+        packetLossAnalyzer.start()
         appScanner.start()
         syncBlocker.blockSync()
 
         scope?.launch {
-            pingEngine.spikeDetected.collect { spike ->
-                if (spike) {
-                    val apps = appScanner.activeApps.value
-                    val backgroundApp = apps.firstOrNull { it != com.pingshield.utils.Constants.GAME_PACKAGE }
-                    if (backgroundApp != null) {
-                        appKiller.killApp(backgroundApp)
-                        _currentAction.value = "Killed: $backgroundApp"
-                    }
-
-                    if (dnsManager.currentDns.value != com.pingshield.utils.Constants.DNS_PRIMARY) {
+            kotlinx.coroutines.flow.combine(
+                pingEngine.currentPing,
+                jitterAnalyzer.ipdv,
+                packetLossAnalyzer.lossPercent,
+                packetLossAnalyzer.lossType,
+                wifiMonitor.rssi
+            ) { ping, jitter, lossPct, lossType, rssi ->
+                adaptiveEngine.evaluate(
+                    ping = ping.toDouble(),
+                    jitter = jitter,
+                    lossPercent = lossPct,
+                    lossType = lossType,
+                    rssi = rssi
+                )
+            }.collect { action ->
+                when (action) {
+                    NetworkAction.FLUSH_DNS -> {
                         dnsManager.flush()
-                        _currentAction.value = "DNS Flushed"
+                        _actionText.value = "DNS Flushed"
                     }
-                }
-            }
-        }
-
-        scope?.launch {
-            wifiMonitor.rssi.collect { rssi ->
-                if (rssi < com.pingshield.utils.Constants.RSSI_WARNING_THRESHOLD && rssi > Int.MIN_VALUE) {
-                    networkSwitcher.switchToMobile()
-                    _currentAction.value = "Switched to Mobile Data"
-                }
-            }
-        }
-
-        scope?.launch {
-            packetLossDetector.lossPercentage.collect { loss ->
-                if (loss > com.pingshield.utils.Constants.LOSS_THRESHOLD_PERCENT) {
-                    dnsManager.flush()
-                    _currentAction.value = "Packet loss ${String.format("%.1f", loss)}% - DNS flushed"
+                    NetworkAction.KILL_BACKGROUND_APPS -> {
+                        val apps = appScanner.activeApps.value
+                        val target = apps.firstOrNull { it != com.pingshield.utils.Constants.GAME_PACKAGE }
+                        if (target != null) {
+                            appKiller.killApp(target)
+                            _actionText.value = "Killed: $target"
+                        }
+                    }
+                    NetworkAction.RECONNECT_TUNNEL -> {
+                        _actionText.value = "Reconnecting tunnel..."
+                    }
+                    NetworkAction.SWITCH_TO_MOBILE -> {
+                        networkSwitcher.switchToMobile()
+                        _actionText.value = "Switched to Mobile Data"
+                    }
+                    NetworkAction.STABLE -> {
+                        _actionText.value = "Stable"
+                    }
+                    else -> {}
                 }
             }
         }
@@ -85,7 +94,6 @@ class StabilityEngine @Inject constructor(
                 }
                 if (syncApps.isNotEmpty()) {
                     syncBlocker.blockSync()
-                    _currentAction.value = "Sync blocked for ${syncApps.size} app(s)"
                 }
             }
         }
@@ -94,13 +102,14 @@ class StabilityEngine @Inject constructor(
     fun stop() {
         pingEngine.stop()
         wifiMonitor.stop()
-        packetLossDetector.stop()
+        packetLossAnalyzer.stop()
         appScanner.stop()
         syncBlocker.restoreSync()
         networkSwitcher.restoreWifi()
         appKiller.clearAll()
+        adaptiveEngine.reset()
         scope?.cancel()
         scope = null
-        _currentAction.value = "Stopped"
+        _actionText.value = "Stopped"
     }
 }

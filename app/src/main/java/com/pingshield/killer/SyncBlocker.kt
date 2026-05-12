@@ -17,9 +17,7 @@ class SyncBlocker @Inject constructor(
         try {
             ContentResolver.setMasterSyncAutomatically(false)
             isBlocked = true
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (_: Exception) {}
     }
 
     fun restoreSync() {
@@ -27,8 +25,6 @@ class SyncBlocker @Inject constructor(
         try {
             ContentResolver.setMasterSyncAutomatically(true)
             isBlocked = false
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (_: Exception) {}
     }
 }

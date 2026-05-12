@@ -16,14 +16,13 @@ class TrafficController @Inject constructor(
     private val _blockedAppCount = MutableStateFlow(0)
     val blockedAppCount: StateFlow<Int> = _blockedAppCount.asStateFlow()
 
-    private val tempBlocklist = mutableSetOf<String>()
-    private val _tempBlockedApps = MutableStateFlow<List<String>>(emptyList())
-    val tempBlockedApps: StateFlow<List<String>> = _tempBlockedApps.asStateFlow()
-
     fun loadWhitelist() {
         whitelist.clear()
         whitelist.addAll(prefsManager.getWhitelistedPackages())
+        whitelist.add(Constants.GAME_PACKAGE)
     }
+
+    fun getWhitelist(): Set<String> = whitelist.toSet()
 
     fun addToWhitelist(pkg: String) {
         whitelist.add(pkg)
@@ -35,29 +34,9 @@ class TrafficController @Inject constructor(
         prefsManager.removeWhitelistPackage(pkg)
     }
 
-    fun isWhitelisted(pkg: String): Boolean {
-        return whitelist.contains(pkg)
-    }
-
-    fun addToTempBlocked(pkg: String) {
-        tempBlocklist.add(pkg)
-        _tempBlockedApps.value = tempBlocklist.toList()
-        _blockedAppCount.value = tempBlocklist.size
-    }
-
-    fun removeFromTempBlocked(pkg: String) {
-        tempBlocklist.remove(pkg)
-        _tempBlockedApps.value = tempBlocklist.toList()
-        _blockedAppCount.value = tempBlocklist.size
-    }
-
-    fun shouldAllowPacket(uid: Int): Boolean {
-        return true
-    }
+    fun isWhitelisted(pkg: String): Boolean = whitelist.contains(pkg)
 
     fun clearAll() {
-        tempBlocklist.clear()
-        _tempBlockedApps.value = emptyList()
         _blockedAppCount.value = 0
     }
 }
