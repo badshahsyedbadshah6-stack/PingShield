@@ -202,7 +202,7 @@ class PingShieldVpn : VpnService() {
         fun prepare(context: Context): Intent? = VpnService.prepare(context)
 
         fun startVpn(context: Context) {
-            val intent = Intent(this, PingShieldVpn::class.java)
+            val intent = Intent(context, PingShieldVpn::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 context.startForegroundService(intent)
             else
