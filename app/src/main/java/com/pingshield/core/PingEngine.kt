@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.net.InetSocketAddress
 import java.net.Socket
 import javax.inject.Inject
@@ -32,6 +34,17 @@ class PingEngine @Inject constructor(
 
     private val history = mutableListOf<Long>()
     private var scope: CoroutineScope? = null
+    private var hasIcmp = false
+
+    init {
+        try {
+            val process = Runtime.getRuntime().exec("/system/bin/ping -c 1 -w 1 1.1.1.1")
+            val exitCode = process.waitFor()
+            hasIcmp = exitCode == 0 || exitCode == 1
+        } catch (_: Exception) {
+            hasIcmp = false
+        }
+    }
 
     fun start() {
         stop()
@@ -68,6 +81,34 @@ class PingEngine @Inject constructor(
     }
 
     private fun measureTarget(host: String, port: Int): Long {
+        if (hasIcmp) {
+            val icmpResult = icmpPing(host)
+            if (icmpResult >= 0) return icmpResult
+        }
+        return tcpPing(host, port)
+    }
+
+    private fun icmpPing(host: String): Long {
+        return try {
+            val start = System.nanoTime()
+            val process = Runtime.getRuntime().exec("/system/bin/ping -c 1 -W 1 -n $host")
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            val line = reader.readLine()
+            process.waitFor()
+            if (line != null && line.contains("time=")) {
+                val timeStr = line.substringAfter("time=").substringBefore(" ms").substringBefore(" ")
+                val ms = timeStr.toDoubleOrNull()
+                if (ms != null) {
+                    val elapsed = (System.nanoTime() - start) / 1_000_000
+                    ms.toLong().coerceAtMost(elapsed)
+                } else -1L
+            } else -1L
+        } catch (e: Exception) {
+            -1L
+        }
+    }
+
+    private fun tcpPing(host: String, port: Int): Long {
         return try {
             val socket = Socket()
             val start = System.nanoTime()

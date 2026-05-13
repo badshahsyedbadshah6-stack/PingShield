@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.os.Process
 import androidx.core.app.NotificationCompat
 import com.pingshield.PingShieldApp
 import com.pingshield.R
@@ -45,6 +46,7 @@ class PingShieldVpn : VpnService() {
     @Inject lateinit var jitterAnalyzer: JitterAnalyzer
     @Inject lateinit var adaptiveEngine: AdaptiveResponseEngine
     @Inject lateinit var packetLossAnalyzer: PacketLossAnalyzer
+    @Inject lateinit var dnsInterceptor: DnsInterceptor
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var scope: CoroutineScope? = null
@@ -78,6 +80,7 @@ class PingShieldVpn : VpnService() {
                 builder.setMetered(false)
             }
 
+            appKiller.proactiveKill()
             for (pkg in appKiller.getBlockedPackages()) {
                 try { builder.addDisallowedApplication(pkg) } catch (_: Exception) {}
             }
@@ -89,16 +92,34 @@ class PingShieldVpn : VpnService() {
             }
 
             isRunning = true
+
+            networkSwitcher.setVpnService(this)
             trafficController.loadWhitelist()
             stabilityEngine.start()
+            dnsInterceptor.start()
 
             val input = FileInputStream(vpnInterface?.fileDescriptor)
             val output = FileOutputStream(vpnInterface?.fileDescriptor)
             packetProcessor.setStreams(input, output)
             packetProcessor.setWhitelist(trafficController.getWhitelist())
 
+            val blockedIps = appKiller.getBlockedIps()
+            if (blockedIps.isNotEmpty()) {
+                packetProcessor.setBlockedIps(blockedIps)
+            }
+
             scope = CoroutineScope(Dispatchers.IO + Job())
             scope?.launch {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    try {
+                        val hintMgr = this@PingShieldVpn.getSystemService(Context.PERFORMANCE_HINT_SERVICE)
+                        if (hintMgr != null) {
+                            val cls = hintMgr.javaClass
+                            val method = cls.getMethod("createHintSession", IntArray::class.java, Long::class.java)
+                            method.invoke(hintMgr, intArrayOf(Process.myTid()), Constants.TARGET_FRAME_NANOS)
+                        }
+                    } catch (_: Exception) {}
+                }
                 while (isActive) {
                     try {
                         packetProcessor.processAndForward()
@@ -160,11 +181,13 @@ class PingShieldVpn : VpnService() {
     private fun stopVpn() {
         isRunning = false
         stabilityEngine.stop()
+        dnsInterceptor.stop()
         packetProcessor.close()
         try { vpnInterface?.close() } catch (_: Exception) {}
         vpnInterface = null
         scope?.cancel()
         scope = null
+        networkSwitcher.setVpnService(null)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -179,7 +202,7 @@ class PingShieldVpn : VpnService() {
         fun prepare(context: Context): Intent? = VpnService.prepare(context)
 
         fun startVpn(context: Context) {
-            val intent = Intent(context, PingShieldVpn::class.java)
+            val intent = Intent(this, PingShieldVpn::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 context.startForegroundService(intent)
             else

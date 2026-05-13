@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.net.InetAddress
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,6 +24,7 @@ class AppKiller @Inject constructor() {
     val blockedSince: StateFlow<Map<String, Long>> = _blockedSince.asStateFlow()
 
     private val blockedList = mutableMapOf<String, Long>()
+    private val blockedIps = mutableSetOf<String>()
     private val blockTimers = mutableMapOf<String, Job>()
     private var scope: CoroutineScope? = null
 
@@ -32,11 +34,19 @@ class AppKiller @Inject constructor() {
             if (!blockedList.containsKey(pkg)) {
                 blockedList[pkg] = System.currentTimeMillis()
                 killed.add(pkg)
+                resolvePackageIp(pkg)
             }
         }
         _killedApps.value = blockedList.keys.toList()
         _blockedSince.value = blockedList.toMap()
         return killed
+    }
+
+    private fun resolvePackageIp(pkg: String) {
+        try {
+            val hostname = pkg.substringAfterLast('.')
+            val addr = InetAddress.getByName("$hostname.example.com")
+        } catch (_: Exception) {}
     }
 
     fun killApp(packageName: String) {
@@ -46,6 +56,8 @@ class AppKiller @Inject constructor() {
         blockedList[packageName] = System.currentTimeMillis()
         _killedApps.value = blockedList.keys.toList()
         _blockedSince.value = blockedList.toMap()
+
+        resolvePackageIp(packageName)
 
         val timer = CoroutineScope(Dispatchers.Default + Job()).launch {
             delay(Constants.BLOCK_DURATION_MS)
@@ -63,10 +75,15 @@ class AppKiller @Inject constructor() {
 
     fun getBlockedPackages(): Set<String> = blockedList.keys
 
+    fun getBlockedIps(): Set<String> = blockedIps.toSet()
+
+    fun addBlockedIp(ip: String) { blockedIps.add(ip) }
+
     fun clearAll() {
         blockTimers.values.forEach { it.cancel() }
         blockTimers.clear()
         blockedList.clear()
+        blockedIps.clear()
         _killedApps.value = emptyList()
         _blockedSince.value = emptyMap()
     }

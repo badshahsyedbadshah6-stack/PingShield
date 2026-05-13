@@ -3,7 +3,6 @@ package com.pingshield.monitor
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.PowerManager
-import android.os.Process
 import com.pingshield.utils.Constants
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -42,7 +41,6 @@ class WifiMonitor @Inject constructor(
     private var scope: CoroutineScope? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
-    private var cpuSession: Any? = null
 
     fun start() {
         stop()
@@ -56,17 +54,6 @@ class WifiMonitor @Inject constructor(
 
         wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PingShield:CpuLock")
         wakeLock?.acquire(Constants.WAKELOCK_TIMEOUT_MS)
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            try {
-                val hintManager = context.getSystemService(Context.PERFORMANCE_HINT_SERVICE)
-                if (hintManager != null) {
-                    val cls = hintManager.javaClass
-                    val method = cls.getMethod("createHintSession", IntArray::class.java, Long::class.java)
-                    cpuSession = method.invoke(hintManager, intArrayOf(Process.myTid()), Constants.TARGET_FRAME_NANOS)
-                }
-            } catch (_: Exception) {}
-        }
 
         scope?.launch {
             while (isActive) {
@@ -100,7 +87,6 @@ class WifiMonitor @Inject constructor(
         wifiLock = null
         try { wakeLock?.release() } catch (_: Exception) {}
         wakeLock = null
-        cpuSession = null
         _rssi.value = Int.MIN_VALUE
         _wifiWarning.value = ""
     }

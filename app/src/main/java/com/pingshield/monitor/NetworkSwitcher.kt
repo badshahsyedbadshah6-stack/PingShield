@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.VpnService
 import android.os.Build
 import com.pingshield.utils.NetworkUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -24,6 +25,11 @@ class NetworkSwitcher @Inject constructor(
     private var mobileNetwork: Network? = null
     private var wifiNetwork: Network? = null
     private var isSwitched = false
+    private var vpnService: VpnService? = null
+
+    fun setVpnService(vpn: VpnService?) {
+        vpnService = vpn
+    }
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -54,6 +60,9 @@ class NetworkSwitcher @Inject constructor(
         val mobileNet = mobileNetwork
         if (mobileNet != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             getConnectivityManager().bindProcessToNetwork(mobileNet)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                vpnService?.setUnderlyingNetworks(arrayOf(mobileNet))
+            }
             isSwitched = true
             _currentNetwork.value = "Mobile Data"
         }
@@ -64,6 +73,9 @@ class NetworkSwitcher @Inject constructor(
         val wifiNet = wifiNetwork
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             getConnectivityManager().bindProcessToNetwork(wifiNet)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                vpnService?.setUnderlyingNetworks(arrayOf(wifiNet))
+            }
             isSwitched = false
             _currentNetwork.value = "WiFi"
         }
@@ -74,6 +86,7 @@ class NetworkSwitcher @Inject constructor(
         wifiNetwork = null
         mobileNetwork = null
         isSwitched = false
+        vpnService = null
         _currentNetwork.value = "WiFi"
     }
 

@@ -1,31 +1,42 @@
 package com.pingshield.vpn
 
-import com.pingshield.utils.Constants
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.net.InetAddress
+import com.pingshield.core.DnsManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class DnsInterceptor @Inject constructor() {
-    private var dnsSocket: DatagramSocket? = null
+class DnsInterceptor @Inject constructor(
+    private val dnsManager: DnsManager
+) {
+    private var scope: CoroutineScope? = null
 
-    fun interceptDns(data: ByteArray): ByteArray {
-        return try {
-            val socket = DatagramSocket()
-            val dnsServer = InetAddress.getByName(Constants.DNS_PRIMARY)
-            val packet = DatagramPacket(data, data.size, dnsServer, 53)
-            socket.soTimeout = 2000
-            socket.send(packet)
-            val buf = ByteArray(512)
-            val recv = DatagramPacket(buf, buf.size)
-            socket.receive(recv)
-            socket.close()
-            recv.data.copyOf(recv.length)
-        } catch (_: Exception) { data }
+    fun isKnownDomain(domain: String): Boolean {
+        val cached = dnsManager.resolvedDomains.value
+        return cached.containsKey(domain) &&
+               cached[domain] != "failed" &&
+               cached[domain] != "unresolved"
     }
 
-    fun start() { dnsSocket = DatagramSocket() }
-    fun stop() { try { dnsSocket?.close() } catch (_: Exception) {}; dnsSocket = null }
+    fun getCachedIp(domain: String): String? {
+        val ip = dnsManager.resolvedDomains.value[domain]
+        return if (ip == "failed" || ip == "unresolved") null else ip
+    }
+
+    fun start() {
+        stop()
+        scope = CoroutineScope(Dispatchers.IO + Job())
+        scope?.launch {
+            dnsManager.preResolveDomains()
+        }
+    }
+
+    fun stop() {
+        scope?.cancel()
+        scope = null
+    }
 }
